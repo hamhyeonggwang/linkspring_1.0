@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788401364185,
+      "tag": "0000_known_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788403712302,
+      "tag": "0001_awesome_black_widow",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788404744094,
+      "tag": "0002_quiet_falcon",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788414357934,
+      "tag": "0003_dapper_catseye",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788417048850,
+      "tag": "0004_lovely_mattie_franklin",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789565392732,
+      "tag": "0005_misty_boom_boom",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789565588530,
+      "tag": "0006_atomic_guard",
+      "breakpoints": true
+    }
+  ]
+}
