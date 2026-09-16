@@ -6,6 +6,11 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "desktop:build": "node scripts/build-desktop.mjs",
+    "desktop:start": "electron desktop-build",
+    "desktop:dist": "npm run desktop:build && electron-builder --config electron-builder.yml --win --x64 --publish never",
+    "desktop:test": "node --import tsx --test tests/desktop/*.test.ts",
+    "desktop:verify": "node scripts/verify-desktop-package.mjs",
     "install:ci": "npm ci --include=dev",
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
     "build": "vinext build",
@@ -53,6 +58,9 @@
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
     "drizzle-kit": "0.31.10",
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "miniflare": "4.20260515.0",

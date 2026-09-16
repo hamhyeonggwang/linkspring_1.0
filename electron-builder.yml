@@ -1,0 +1,37 @@
+appId: org.linkspring.desktop
+productName: LinkSpring
+electronVersion: 44.4.1
+directories:
+  app: desktop-build
+  output: release
+files:
+  - "!node_modules/**/*"
+  - main.cjs
+  - preload.cjs
+  - renderer/**/*
+  - migrations/*.sql
+  - package.json
+  - BUILD-INFO.json
+  - THIRD-PARTY-NOTICES.txt
+  - 사용안내.md
+asar: true
+npmRebuild: false
+win:
+  icon: desktop/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  signExecutable: false
+  artifactName: LinkSpring-Setup-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: 이어봄 LinkSpring
+  uninstallDisplayName: 이어봄 LinkSpring
+  deleteAppDataOnUninstall: false
+  installerLanguages: [ko_KR, en_US]
+  language: "1042"

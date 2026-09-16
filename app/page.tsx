@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { appFetch } from "@/lib/client";
 import {
   Link2,
   Users,
@@ -113,7 +114,7 @@ export default function Home() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/state", { cache: "no-store" });
+      const r = await appFetch("/api/state", { cache: "no-store" });
       const data = (await r.json()) as State & { error?: string };
       if (!r.ok) {
         setAuthRequired(r.status === 401);
@@ -139,7 +140,7 @@ export default function Home() {
     busyRef.current = true;
     setBusy(true);
     try {
-      const r = await fetch("/api/state", {
+      const r = await appFetch("/api/state", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -214,7 +215,7 @@ export default function Home() {
     }
     setParsing(true);
     try {
-      const r = await fetch("/api/ai/parse-absence", {
+      const r = await appFetch("/api/ai/parse-absence", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ text: safeText }),

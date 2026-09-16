@@ -44,3 +44,6 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+/desktop-build/
+/release/
+/desktop-test-output/

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DatabasePort, PreparedQuery } from "./database-port";
 import { AppError } from "./errors";
 import { readState, commit } from "./state-store";
 import {
@@ -75,7 +76,7 @@ function requireVersion(state: State, version: string) {
 }
 export async function executeAction(
   body: unknown,
-  db: D1Database,
+  db: DatabasePort,
   actor: string,
 ) {
   const parsed = actionSchema.safeParse(body);
@@ -87,7 +88,7 @@ export async function executeAction(
   const input = parsed.data,
     state = await readState(db);
   requireVersion(state, input.version);
-  const operations: D1PreparedStatement[] = [];
+  const operations: PreparedQuery[] = [];
   let target = "settings",
     detail = "";
   if (input.kind === "create") {

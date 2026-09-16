@@ -1,6 +1,26 @@
 # 이어:봄(LinkSpring)
 
-비영리 기관의 빈 서비스 일정과 대기자를 연결하는 코디네이터 업무 프로그램입니다. 치료에서 출발해 상담·교육·가족지원으로 확장하며, 수익보다 기다리는 사람의 기회를 우선합니다. Next.js 호환 Vinext, Cloudflare Workers/D1, 선택적 Claude Messages API를 사용합니다.
+비영리 기관의 빈 서비스 일정과 대기자를 연결하는 코디네이터 업무 프로그램입니다. 치료에서 출발해 상담·교육·가족지원으로 확장하며, 수익보다 기다리는 사람의 기회를 우선합니다. 제출용 배포 형태는 **Windows 로컬 데스크톱 앱**입니다. 기존 웹 개발 코드는 유지합니다.
+
+## Windows 설치형 사용
+
+`release/LinkSpring-Setup-1.0.0-x64.exe`를 Windows 10/11 64비트 PC에서 실행해 설치합니다. GitHub 배포 시 이 파일을 Releases에 첨부해야 하며, Source code ZIP은 설치파일이 아닙니다. 기본 업무에는 인터넷·Node.js·Python·API 키가 필요하지 않습니다. 첫 실행의 **예시로 체험**에서 가상 데이터로 업무 흐름을 확인할 수 있습니다.
+
+Electron과 내장 `node:sqlite`를 사용하며, 실제 업무와 체험 데이터는 별도 파일에 저장합니다. 앱 상단에서 일정 직접 등록·백업·복원·선택적 Claude 설정을 제공합니다. [Windows 사용 안내](docs/Windows_사용안내.md)를 참조하세요. 이 빌드는 코드 서명되지 않았으며, Windows에서의 실제 설치·제거 검증은 별도로 필요합니다.
+
+### 개발자 빌드
+
+```bash
+npm ci
+node node_modules/electron/install.js
+npm run desktop:test
+npm run desktop:dist
+npm run desktop:verify
+```
+
+설치파일과 SHA-256 검증 파일은 `release/`에 생성됩니다. 개발용 실행은 `npm run desktop:build` 후 `npm run desktop:start`입니다. 빌드는 `.env.local`을 읽지 않으며 설치파일에 API 키·업무 DB·개발 서버를 포함하지 않습니다. 배포 후 데이터는 `%LOCALAPPDATA%\LinkSpring\data`에 유지됩니다. Python 전처리 프로그램은 별도 배포 대상입니다.
+
+아래 내용은 기존 웹 개발 버전의 실행 및 운영 설정입니다.
 
 ## 로컬 실행
 

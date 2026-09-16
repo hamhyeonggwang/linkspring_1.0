@@ -1,3 +1,4 @@
+import type { DatabasePort, PreparedQuery } from "./database-port";
 import type {
   State,
   Slot,
@@ -7,7 +8,7 @@ import type {
   Audit,
 } from "./domain";
 
-export async function readState(db: D1Database): Promise<State> {
+export async function readState(db: DatabasePort): Promise<State> {
   await db
     .prepare(
       "INSERT OR IGNORE INTO system_settings(key,value) VALUES ('state_revision',?)",
@@ -51,9 +52,9 @@ export async function readState(db: D1Database): Promise<State> {
 }
 
 export async function commit(
-  db: D1Database,
+  db: DatabasePort,
   version: string,
-  operations: D1PreparedStatement[],
+  operations: PreparedQuery[],
   actor: string,
   action: string,
   target: string,
