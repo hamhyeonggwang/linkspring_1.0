@@ -7,6 +7,7 @@ import {
   participantSchema,
   requestSchema,
   scheduleSchema,
+  staffSchema,
   candidatesFor,
   requestIntervals,
   parseAvailability,
@@ -56,6 +57,19 @@ const actionSchema = z.discriminatedUnion("kind", [
     version: versionSchema,
     date: dateSchema,
     entries: z.array(scheduleSchema).min(1).max(500),
+    dates: z.array(dateSchema).min(1).max(100).optional(),
+    staff: z.array(staffSchema).max(500).optional(),
+    preferences: z
+      .object({
+        firstTime: z
+          .string()
+          .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)
+          .optional(),
+        step: z.union([z.literal(10), z.literal(30)]).optional(),
+        cells: z.enum(["starts", "filled"]).optional(),
+        therapies: z.record(z.string().max(80), z.string().max(40)).optional(),
+      })
+      .optional(),
   }),
   z.object({
     kind: z.literal("setting"),
@@ -230,13 +244,72 @@ export async function executeAction(
     }
     const normalized = people.map((p) => ({
       ...p,
+      externalCode:
+        p.externalCode ??
+        state.participants.find((old) => old.id === p.id)?.externalCode ??
+        null,
+      importSource:
+        p.importSource ??
+        state.participants.find((old) => old.id === p.id)?.importSource ??
+        "manual",
       availability: JSON.stringify(parseAvailability(p.availability)),
-      active: Number(p.active),
+      active: Number(
+        input.kind === "participants_import"
+          ? (state.participants.find((old) => old.id === p.id)?.active ??
+              p.active)
+          : p.active,
+      ),
+      type:
+        input.kind === "participants_import"
+          ? [
+              ...new Set([
+                ...(state.participants
+                  .find((old) => old.id === p.id)
+                  ?.type.split(", ") ?? []),
+                ...p.type.split(", "),
+              ]),
+            ]
+              .sort()
+              .join(", ")
+          : p.type,
+      since:
+        input.kind === "participants_import"
+          ? [
+              state.participants.find((old) => old.id === p.id)?.since ??
+                p.since,
+              p.since,
+            ].sort()[0]
+          : p.since,
     }));
+    for (const p of normalized) {
+      const existing = state.participants.find((old) => old.id === p.id);
+      if (
+        existing?.externalCode &&
+        (existing.externalCode !== p.externalCode ||
+          existing.importSource !== p.importSource)
+      )
+        throw new AppError(
+          409,
+          "기존 익명 표시와 대상자의 연결은 변경할 수 없습니다.",
+        );
+      if (
+        p.externalCode &&
+        state.participants.some(
+          (old) =>
+            old.id !== p.id &&
+            old.externalCode === p.externalCode &&
+            old.importSource === p.importSource,
+        )
+      )
+        throw new AppError(
+          409,
+          "이미 등록된 익명 표시입니다. 새로고침 후 다시 가져오세요.",
+        );
+    }
     operations.push(
       db
         .prepare(
-          "INSERT INTO participants(id,therapy_type,availability,waiting_since,recent_connection,active) SELECT json_extract(value,'$.id'),json_extract(value,'$.type'),json_extract(value,'$.availability'),json_extract(value,'$.since'),json_extract(value,'$.recent'),json_extract(value,'$.active') FROM json_each(?) WHERE 1 ON CONFLICT(id) DO UPDATE SET therapy_type=excluded.therapy_type,availability=excluded.availability,waiting_since=excluded.waiting_since,active=excluded.active,updated_at=CURRENT_TIMESTAMP",
+          "INSERT INTO participants(id,therapy_type,availability,waiting_since,recent_connection,active,external_code,import_source) SELECT json_extract(value,'$.id'),json_extract(value,'$.type'),json_extract(value,'$.availability'),json_extract(value,'$.since'),json_extract(value,'$.recent'),json_extract(value,'$.active'),json_extract(value,'$.externalCode'),json_extract(value,'$.importSource') FROM json_each(?) WHERE 1 ON CONFLICT(id) DO UPDATE SET therapy_type=excluded.therapy_type,availability=excluded.availability,waiting_since=excluded.waiting_since,active=excluded.active,external_code=excluded.external_code,import_source=excluded.import_source,updated_at=CURRENT_TIMESTAMP",
         )
         .bind(JSON.stringify(normalized)),
     );
@@ -267,21 +340,50 @@ export async function executeAction(
       operations.push(
         db
           .prepare(
-            "INSERT INTO participant_requests(id,participant_id,submitted_at,desired_date,therapy_types,morning_times,afternoon_times,status,note) SELECT json_extract(value,'$.id'),json_extract(value,'$.participantId'),json_extract(value,'$.submittedAt'),json_extract(value,'$.desiredDate'),json_extract(value,'$.therapyTypes'),json_extract(value,'$.morningTimes'),json_extract(value,'$.afternoonTimes'),json_extract(value,'$.status'),'' FROM json_each(?) WHERE 1 ON CONFLICT(id) DO UPDATE SET submitted_at=excluded.submitted_at,desired_date=excluded.desired_date,therapy_types=excluded.therapy_types,morning_times=excluded.morning_times,afternoon_times=excluded.afternoon_times,status=excluded.status,note='',updated_at=CURRENT_TIMESTAMP",
+            "INSERT INTO participant_requests(id,participant_id,submitted_at,desired_date,therapy_types,morning_times,afternoon_times,status,note,submitted_time) SELECT json_extract(value,'$.id'),json_extract(value,'$.participantId'),json_extract(value,'$.submittedAt'),json_extract(value,'$.desiredDate'),json_extract(value,'$.therapyTypes'),json_extract(value,'$.morningTimes'),json_extract(value,'$.afternoonTimes'),json_extract(value,'$.status'),'',json_extract(value,'$.submittedTime') FROM json_each(?) WHERE 1 ON CONFLICT(id) DO UPDATE SET submitted_at=excluded.submitted_at,desired_date=excluded.desired_date,therapy_types=excluded.therapy_types,morning_times=excluded.morning_times,afternoon_times=excluded.afternoon_times,status=excluded.status,note='',submitted_time=excluded.submitted_time,updated_at=CURRENT_TIMESTAMP",
           )
-          .bind(JSON.stringify(input.requests)),
+          .bind(
+            JSON.stringify(
+              input.requests.map((r) => {
+                const previous = state.participantRequests.find(
+                  (old) => old.id === r.id,
+                );
+                if (
+                  previous?.submittedTime &&
+                  r.submittedTime &&
+                  previous.submittedTime > r.submittedTime
+                )
+                  return previous;
+                return {
+                  ...r,
+                  status:
+                    previous && (r.preserveStatus || r.status === "처리 대기")
+                      ? previous.status
+                      : r.status,
+                };
+              }),
+            ),
+          ),
       );
     }
     detail = `대기자 ${people.length}명 반영`;
   } else if (input.kind === "schedule_import") {
-    target = input.date;
-    unique(input.entries.map((e) => `${e.therapistId}|${e.startTime}`));
+    const dates = input.dates ?? [input.date];
+    unique(dates);
+    if (
+      !dates.includes(input.date) ||
+      dates.some((date) => !input.entries.some((e) => e.date === date))
+    )
+      throw new AppError(400, "반영할 날짜와 예약을 확인하세요.");
+    target = dates.join(", ");
+    unique(
+      input.entries.map((e) => `${e.date}|${e.therapistId}|${e.startTime}`),
+    );
     if (
       input.entries.some(
         (e) =>
-          e.date !== input.date ||
-          e.id !== `${e.date}|${e.therapistId}|${e.startTime}` ||
-          e.therapistName !== e.therapistId,
+          !dates.includes(e.date) ||
+          e.id !== `${e.date}|${e.therapistId}|${e.startTime}`,
       )
     )
       throw new AppError(
@@ -291,9 +393,10 @@ export async function executeAction(
     if (
       state.slots.some(
         (s) =>
-          s.date === input.date &&
+          dates.includes(s.date) &&
           !input.entries.some(
             (e) =>
+              e.date === s.date &&
               e.therapistId === s.therapist &&
               e.department === s.type &&
               e.startTime === s.startTime &&
@@ -305,9 +408,33 @@ export async function executeAction(
         409,
         "이미 등록된 회기의 날짜·담당자·서비스·시간을 변경하는 시간표는 반영할 수 없습니다.",
       );
-    operations.push(
-      db.prepare("DELETE FROM schedule_entries WHERE date=?").bind(input.date),
-    );
+    for (const day of dates)
+      operations.push(
+        db.prepare("DELETE FROM schedule_entries WHERE date=?").bind(day),
+      );
+    const staff = input.staff ?? [];
+    unique(staff.map((s) => s.id));
+    unique(staff.map((s) => s.externalCode));
+    for (const s of staff) {
+      if (
+        state.staff?.some(
+          (old) =>
+            (old.id === s.id && old.externalCode !== s.externalCode) ||
+            (old.externalCode === s.externalCode && old.id !== s.id),
+        )
+      )
+        throw new AppError(
+          409,
+          "치료사 코드가 이미 연결되어 있습니다. 새로고침 후 다시 가져오세요.",
+        );
+      operations.push(
+        db
+          .prepare(
+            "INSERT INTO schedule_staff(id,external_code,display_name,department,position) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,department=excluded.department,position=excluded.position",
+          )
+          .bind(s.id, s.externalCode, s.displayName, s.department, s.position),
+      );
+    }
     const entries = input.entries.map((e) => ({
       ...e,
       weekday: "일월화수목금토"[new Date(`${e.date}T00:00:00Z`).getUTCDay()],
@@ -321,6 +448,14 @@ export async function executeAction(
         .bind(JSON.stringify(entries)),
     );
     detail = `시간표 ${input.entries.length}회기 반영`;
+    if (input.preferences)
+      operations.push(
+        db
+          .prepare(
+            "INSERT INTO system_settings(key,value) VALUES ('csv_schedule_preferences',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          )
+          .bind(JSON.stringify(input.preferences)),
+      );
   } else {
     operations.push(
       db

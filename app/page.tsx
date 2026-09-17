@@ -57,18 +57,18 @@ import {
   type Participant,
 } from "@/lib/domain";
 import type { AbsenceFields } from "@/lib/absence";
-import { decodeCsv, participantImport, legacyScheduleImport } from "@/lib/csv";
+import { decodeCsv } from "@/lib/csv";
+import { CsvImportDialog, type CsvFile } from "@/components/csv-import-dialog";
+import { TreatmentBoard } from "@/components/treatment-board";
+import { participantLabel, staffLabel } from "@/lib/domain";
 
 const nav = [
   { id: "queue", label: "처리 대기", icon: ListTodo },
   { id: "children", label: "대기자 관리", icon: Users },
-  { id: "schedule", label: "서비스 일정", icon: CalendarDays },
+  { id: "schedule", label: "치료 일정", icon: CalendarDays },
   { id: "review", label: "추가 확인 필요", icon: CircleAlert },
   { id: "history", label: "연결·안내 내역", icon: Send },
 ];
-type Preview =
-  | ReturnType<typeof participantImport>
-  | ReturnType<typeof legacyScheduleImport>;
 const blankSlot = (): AbsenceFields => ({
   date: today(),
   startTime: "",
@@ -84,7 +84,10 @@ const blankPerson = (): Participant => ({
   recent: "없음",
   active: true,
 });
-export default function Home() {
+export default function Home({
+  desktopControls,
+  onManualSchedule,
+}: { desktopControls?: React.ReactNode; onManualSchedule?: () => void } = {}) {
   const [state, setState] = useState<State>(emptyState),
     [view, setView] = useState("queue"),
     [loading, setLoading] = useState(true),
@@ -105,7 +108,7 @@ export default function Home() {
     [parsing, setParsing] = useState(false);
   const [person, setPerson] = useState<Participant | null>(null),
     [editing, setEditing] = useState(false),
-    [preview, setPreview] = useState<Preview | null>(null),
+    [csvFile, setCsvFile] = useState<CsvFile | null>(null),
     [templateOpen, setTemplateOpen] = useState(false),
     [template, setTemplate] = useState("");
   const participantFile = useRef<HTMLInputElement>(null),
@@ -181,7 +184,7 @@ export default function Home() {
       (s) =>
         (!date || s.date === date) &&
         (!query ||
-          `${s.type} ${s.therapist} ${s.assignedParticipant ?? ""}`.includes(
+          `${s.type} ${staffLabel(state, s.therapist)} ${state.participants.find((p) => p.id === s.assignedParticipant)?.externalCode || s.assignedParticipant || ""}`.includes(
             query,
           )),
     )
@@ -199,11 +202,7 @@ export default function Home() {
     if (!file) return;
     try {
       const text = await decodeCsv(file);
-      setPreview(
-        kind === "participants"
-          ? participantImport(text)
-          : legacyScheduleImport(text),
-      );
+      setCsvFile({ text, kind, name: file.name });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "CSV를 읽지 못했습니다.");
     }
@@ -313,6 +312,7 @@ export default function Home() {
           ))}
         </nav>
         <div className="side-bottom">
+          {desktopControls}
           <button
             disabled={!!error || loading}
             onClick={() => {
@@ -328,7 +328,7 @@ export default function Home() {
             안내문 기본문구
           </button>
           <p className="privacy-note">
-            가명 ID로 관리합니다.
+            기관의 익명 표시로 관리합니다.
             <br />
             최종 연결과 안내는 담당자가 확인합니다.
           </p>
@@ -405,11 +405,13 @@ export default function Home() {
                           <span>
                             {s.type}
                             <br />
-                            {s.therapist}
+                            {staffLabel(state, s.therapist)}
                           </span>
                           <span>
                             {s.status === "연결 완료"
-                              ? s.assignedParticipant
+                              ? state.participants.find(
+                                  (p) => p.id === s.assignedParticipant,
+                                )?.externalCode || s.assignedParticipant
                               : `일치 후보 ${candidatesFor(s, state).length}명`}
                           </span>
                           <Badge variant="outline">
@@ -431,7 +433,10 @@ export default function Home() {
               {view === "children" && (
                 <section>
                   <div className="section-head">
-                    <p>가명 ID·서비스·가능 시간과 희망 일정을 관리합니다.</p>
+                    <p>
+                      기관의 익명 표시·치료 유형·가능 시간과 보강 신청을
+                      관리합니다.
+                    </p>
                     <div className="inline-actions">
                       <Button
                         variant="outline"
@@ -463,18 +468,19 @@ export default function Home() {
                     <a href="/examples/participants.csv" download>
                       대기 명단 CSV 양식
                     </a>{" "}
-                    · 실명·생년월일 대신 기관에서 발급한 가명 ID를 사용하세요.
+                    · 기관 보강 신청 양식도 그대로 읽습니다. 생년월일은 저장하지
+                    않습니다.
                   </p>
                   <div className="table-card">
                     <Table>
                       <TableHeader>
                         <TableRow>
                           {[
-                            "가명 ID",
-                            "서비스",
+                            "익명 표시",
+                            "치료 유형",
                             "가능 시간",
-                            "대기 시작",
-                            "상태",
+                            "대기 시작일 / 신청일",
+                            "최근 연결",
                             "",
                           ].map((h, i) => (
                             <TableHead key={i}>{h}</TableHead>
@@ -484,18 +490,58 @@ export default function Home() {
                       <TableBody>
                         {state.participants.map((p) => (
                           <TableRow key={p.id}>
-                            <TableCell>{p.id}</TableCell>
+                            <TableCell>
+                              {participantLabel(p)}
+                              {!p.active && (
+                                <small className="muted-label">일시 중지</small>
+                              )}
+                            </TableCell>
                             <TableCell>{p.type}</TableCell>
                             <TableCell>
-                              {availabilityLabel(p.availability)}
                               {state.participantRequests.some(
                                 (r) => r.participantId === p.id,
-                              ) && <p>희망 날짜별 신청을 우선 적용</p>}
+                              ) ? (
+                                <details>
+                                  <summary>
+                                    희망 일정{" "}
+                                    {
+                                      state.participantRequests.filter(
+                                        (r) => r.participantId === p.id,
+                                      ).length
+                                    }
+                                    건
+                                  </summary>
+                                  {state.participantRequests
+                                    .filter((r) => r.participantId === p.id)
+                                    .sort((a, b) =>
+                                      a.desiredDate.localeCompare(
+                                        b.desiredDate,
+                                      ),
+                                    )
+                                    .map((r) => (
+                                      <p key={r.id}>
+                                        {r.desiredDate} · {r.therapyTypes}
+                                        <br />
+                                        {[r.morningTimes, r.afternoonTimes]
+                                          .filter(Boolean)
+                                          .join(" / ")}{" "}
+                                        · {r.status}
+                                      </p>
+                                    ))}
+                                </details>
+                              ) : (
+                                availabilityLabel(p.availability)
+                              )}
                             </TableCell>
-                            <TableCell>{p.since}</TableCell>
                             <TableCell>
-                              {p.active ? "활성" : "일시 중지"}
+                              {p.since}
+                              {p.importSource === "institution" && (
+                                <small className="muted-label">
+                                  보강 신청일 기준
+                                </small>
+                              )}
                             </TableCell>
+                            <TableCell>{p.recent}</TableCell>
                             <TableCell>
                               <Button
                                 variant="ghost"
@@ -554,111 +600,37 @@ export default function Home() {
                 </section>
               )}
               {view === "schedule" && (
-                <section>
-                  <div className="section-head">
-                    <p>
-                      시간표의 예약 회기를 확인한 뒤 결석한 회기만 등록합니다.
-                    </p>
-                    <Button onClick={() => scheduleFile.current?.click()}>
-                      시간표 CSV 불러오기
-                    </Button>
-                  </div>
+                <>
                   <input
                     hidden
                     ref={scheduleFile}
                     type="file"
-                    accept=".csv"
+                    accept=".csv,text/csv"
                     onChange={(e) => {
                       void importFile(e.target.files?.[0], "schedule");
                       e.target.value = "";
                     }}
                   />
-                  <p>
-                    <a href="/examples/schedule.csv" download>
-                      시간표 CSV 양식
-                    </a>{" "}
-                    · 08:30–12:00 / 13:00–18:00, 30분 회기
-                  </p>
-                  <label>
-                    날짜
-                    <Input
-                      type="date"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                    />
-                  </label>
-                  <div className="table-card">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          {[
-                            "날짜",
-                            "시간",
-                            "서비스",
-                            "담당자 코드",
-                            "회기 상태",
-                          ].map((h) => (
-                            <TableHead key={h}>{h}</TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {state.scheduleEntries
-                          .filter((e) => !date || e.date === date)
-                          .map((e) => {
-                            const s = state.slots.find(
-                              (s) =>
-                                s.date === e.date &&
-                                s.therapist === e.therapistId &&
-                                s.startTime === e.startTime,
-                            );
-                            return (
-                              <TableRow key={e.id}>
-                                <TableCell>{e.date}</TableCell>
-                                <TableCell>
-                                  {e.startTime}–{e.endTime}
-                                </TableCell>
-                                <TableCell>{e.department}</TableCell>
-                                <TableCell>{e.therapistId}</TableCell>
-                                <TableCell>
-                                  {s ? (
-                                    <Button
-                                      variant="outline"
-                                      onClick={() => openSlot(s.id)}
-                                    >
-                                      {s.status}
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      variant="outline"
-                                      onClick={() => {
-                                        setParsedSlot({
-                                          date: e.date,
-                                          startTime: e.startTime,
-                                          endTime: e.endTime,
-                                          type: e.department,
-                                          therapist: e.therapistId,
-                                        });
-                                        setSource(
-                                          "시간표에서 선택 · 결석 여부 확인 필요",
-                                        );
-                                        setAbsenceOpen(true);
-                                      }}
-                                    >
-                                      결석 등록
-                                    </Button>
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  {!state.scheduleEntries.length && (
-                    <p className="empty-history">등록된 시간표가 없습니다.</p>
-                  )}
-                </section>
+                  <TreatmentBoard
+                    state={state}
+                    date={date}
+                    onDate={setDate}
+                    onImport={() => scheduleFile.current?.click()}
+                    onSlot={openSlot}
+                    onManual={onManualSchedule}
+                    onAbsence={(entry) => {
+                      setParsedSlot({
+                        date: entry.date,
+                        startTime: entry.startTime,
+                        endTime: entry.endTime,
+                        type: entry.department,
+                        therapist: entry.therapistId,
+                      });
+                      setSource("시간표에서 선택 · 결석 여부 확인 필요");
+                      setAbsenceOpen(true);
+                    }}
+                  />
+                </>
               )}
               {view === "history" && (
                 <section>
@@ -706,14 +678,17 @@ export default function Home() {
             </DialogTitle>
             <DialogDescription>
               {active?.date} {active?.startTime}–{active?.endTime} ·{" "}
-              {active?.type} · {active?.therapist}
+              {active?.type} · {active && staffLabel(state, active.therapist)}
             </DialogDescription>
           </DialogHeader>
           {active &&
             (active.status === "연결 완료" ? (
               <>
                 <p>
-                  {active.assignedParticipant} · {active.noticeStatus}
+                  {state.participants.find(
+                    (p) => p.id === active.assignedParticipant,
+                  )?.externalCode || active.assignedParticipant}{" "}
+                  · {active.noticeStatus}
                 </p>
                 <Textarea
                   readOnly
@@ -764,7 +739,8 @@ export default function Home() {
                 </Select>
                 <p className="rule-note">
                   활성 대기자 · 날짜·서비스·전체 회기 시간 일치. 대기 기간이 긴
-                  순, 동률이면 최근 연결이 오래된 순과 가명 ID 순입니다.
+                  순, 동률이면 최근 연결이 오래된 순과 익명 표시 순입니다. 기관
+                  보강 신청은 해당 날짜의 신청일을 기준으로 합니다.
                 </p>
                 <div className="candidate-list">
                   {candidates.map((c, i) => (
@@ -776,7 +752,7 @@ export default function Home() {
                     >
                       <span className="rank">{i + 1}</span>
                       <div>
-                        <strong>{c.participant.id}</strong>
+                        <strong>{participantLabel(c.participant)}</strong>
                         <small>{c.reason}</small>
                       </div>
                       <div>
@@ -812,7 +788,7 @@ export default function Home() {
                     onClick={async () => {
                       if (
                         !window.confirm(
-                          `${active.date} ${active.startTime} ${selected} 연결을 최종 확정할까요?`,
+                          `${active.date} ${active.startTime} ${participantLabel(state.participants.find((p) => p.id === selected)!)} 연결을 최종 확정할까요?`,
                         )
                       )
                         return;
@@ -938,13 +914,45 @@ export default function Home() {
                   </SelectContent>
                 </Select>
               </label>
-              <Field
-                label="담당자 코드"
-                value={parsedSlot.therapist}
-                onChange={(therapist) =>
-                  setParsedSlot((p) => ({ ...p, therapist }))
-                }
-              />
+              <label>
+                치료사
+                <select
+                  className="staff-select"
+                  value={parsedSlot.therapist}
+                  onChange={(e) =>
+                    setParsedSlot((p) => ({ ...p, therapist: e.target.value }))
+                  }
+                >
+                  <option value="">시간표의 치료사 선택</option>
+                  {[
+                    ...new Set(
+                      state.scheduleEntries
+                        .filter(
+                          (e) =>
+                            e.date === parsedSlot.date &&
+                            e.department === parsedSlot.type,
+                        )
+                        .map((e) => e.therapistId),
+                    ),
+                  ].map((id) => (
+                    <option key={id} value={id}>
+                      {staffLabel(state, id)}
+                    </option>
+                  ))}
+                  {parsedSlot.therapist &&
+                    !state.scheduleEntries.some(
+                      (e) =>
+                        e.date === parsedSlot.date &&
+                        e.department === parsedSlot.type &&
+                        e.therapistId === parsedSlot.therapist,
+                    ) && (
+                      <option value={parsedSlot.therapist}>
+                        {staffLabel(state, parsedSlot.therapist)} (시간표 확인
+                        필요)
+                      </option>
+                    )}
+                </select>
+              </label>
               <Button
                 disabled={busy || parsing || !!error}
                 onClick={() => void register()}
@@ -965,16 +973,19 @@ export default function Home() {
           <DialogHeader>
             <DialogTitle>{editing ? "대기자 수정" : "대기자 등록"}</DialogTitle>
             <DialogDescription>
-              실명 대신 기관에서 관리하는 가명 ID를 사용합니다.
+              기관에서 관리하는 고유한 익명 표시를 사용합니다. 내부 ID는 자동
+              생성됩니다. 날짜별 신청을 수정하려면 CSV를 다시 불러오세요.
             </DialogDescription>
           </DialogHeader>
           {person && (
             <div className="participant-form">
               <Field
-                label="가명 ID"
+                label="익명 표시"
                 disabled={editing}
-                value={person.id}
-                onChange={(id) => setPerson({ ...person, id })}
+                value={person.externalCode || person.id}
+                onChange={(externalCode) =>
+                  setPerson({ ...person, externalCode })
+                }
               />
               <Field
                 label="서비스 (복수는 쉼표와 공백)"
@@ -1037,57 +1048,22 @@ export default function Home() {
           )}
         </DialogContent>
       </Dialog>
-      <Dialog
-        open={!!preview}
-        onOpenChange={(o) => {
-          if (!o && !busy) setPreview(null);
-        }}
-      >
-        <DialogContent className="schedule-import-dialog">
-          <DialogHeader>
-            <DialogTitle>CSV 반영 전 확인</DialogTitle>
-            <DialogDescription>
-              검증된 항목 전체를 한 번에 저장합니다. 실패하면 전체 반영을
-              취소합니다.
-            </DialogDescription>
-          </DialogHeader>
-          {preview && (
-            <>
-              <strong>
-                {preview.kind === "participants_import"
-                  ? `대기자 ${preview.participants.length}명 · 희망 일정 ${preview.requests.length}건`
-                  : `${preview.date} · ${preview.entries.length}회기`}
-              </strong>
-              {preview.warnings.map((w, i) => (
-                <p key={i}>{w}</p>
-              ))}
-              <div className="import-preview">
-                {preview.kind === "participants_import"
-                  ? preview.requests.slice(0, 10).map((r) => (
-                      <p key={r.id}>
-                        {r.participantId} · {r.desiredDate} · {r.therapyTypes} ·{" "}
-                        {r.morningTimes} {r.afternoonTimes}
-                      </p>
-                    ))
-                  : preview.entries.slice(0, 10).map((e) => (
-                      <p key={e.id}>
-                        {e.date} · {e.therapistId} · {e.startTime}–{e.endTime}
-                      </p>
-                    ))}
-              </div>
-              <p>처음 10건을 표시합니다. 날짜·가명 ID·시간을 확인해 주세요.</p>
-              <Button
-                disabled={busy}
-                onClick={async () => {
-                  if (await mutate(preview)) setPreview(null);
-                }}
-              >
-                {busy ? "반영 중…" : "확인한 내용 반영"}
-              </Button>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {csvFile && (
+        <CsvImportDialog
+          file={csvFile}
+          state={state}
+          busy={busy}
+          onClose={() => setCsvFile(null)}
+          onApply={async (preview) => {
+            const saved = await mutate(preview);
+            if (saved && preview.kind === "schedule_import") {
+              setDate(preview.date);
+              setView("schedule");
+            }
+            return saved;
+          }}
+        />
+      )}
       <Dialog
         open={templateOpen}
         onOpenChange={(o) => {

@@ -69,6 +69,15 @@ export const therapistSchema = z
     /^[A-Z]{2,12}-[A-Z0-9]{1,16}$/,
     "담당자 코드(예: OT-01)를 입력하세요.",
   );
+export const displayCodeSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .refine(
+    (v) => !/[\r\n\u0000-\u001f]/.test(v),
+    "한 줄의 익명 표시를 사용하세요.",
+  );
 export const intervalSchema = z
   .object({ start: timeSchema, end: timeSchema })
   .refine(
@@ -104,6 +113,8 @@ export function availabilityLabel(value: string) {
 }
 export const participantSchema = z.object({
   id: aliasSchema,
+  externalCode: displayCodeSchema.nullish(),
+  importSource: z.enum(["manual", "standard", "institution"]).optional(),
   type: z
     .string()
     .refine((v) =>
@@ -142,6 +153,8 @@ export const requestSchema = z.object({
     "만료",
   ]),
   note: z.literal("").default(""),
+  submittedTime: z.string().max(40).nullish(),
+  preserveStatus: z.boolean().optional(),
 });
 export type ParticipantRequest = z.infer<typeof requestSchema>;
 export const scheduleSchema = z
@@ -151,10 +164,10 @@ export const scheduleSchema = z
     weekday: z.string().max(3),
     department: therapySchema,
     therapistId: therapistSchema,
-    therapistName: therapistSchema,
+    therapistName: displayCodeSchema,
     startTime: timeSchema,
     endTime: timeSchema,
-    treatmentCode: z.string().regex(/^[A-Z0-9_-]{1,24}$/),
+    treatmentCode: displayCodeSchema,
     importBatch: z.string().max(80),
   })
   .refine(
@@ -162,6 +175,22 @@ export const scheduleSchema = z
     "운영 시간 내 30분 회기만 가능합니다.",
   );
 export type ScheduleEntry = z.infer<typeof scheduleSchema>;
+export const staffSchema = z.object({
+  id: therapistSchema,
+  externalCode: displayCodeSchema,
+  displayName: displayCodeSchema,
+  department: therapySchema,
+  position: z.number().int().min(0).max(1000),
+});
+export type ScheduleStaff = z.infer<typeof staffSchema>;
+export const participantLabel = (p: Participant) => p.externalCode || p.id;
+export function staffLabel(state: State, id: string) {
+  return (
+    state.staff?.find((s) => s.id === id)?.displayName ||
+    state.scheduleEntries.find((e) => e.therapistId === id)?.therapistName ||
+    id
+  );
+}
 export const slotInputSchema = z
   .object({
     date: dateSchema,
@@ -200,6 +229,7 @@ export type State = {
   scheduleEntries: ScheduleEntry[];
   audit: Audit[];
   settings: Record<string, string>;
+  staff?: ScheduleStaff[];
 };
 export const emptyState: State = {
   slots: [],
@@ -258,6 +288,12 @@ export function candidatesFor(
         return [];
       const requests = state.participantRequests.filter(
         (r) => r.participantId === p.id,
+      );
+      const eligibleRequests = requests.filter(
+        (r) =>
+          r.desiredDate === slot.date &&
+          r.status === "처리 대기" &&
+          r.therapyTypes.split(", ").includes(slot.type),
       );
       let intervals: z.infer<typeof intervalSchema>[] = [];
       if (requests.length) {
@@ -318,7 +354,9 @@ export function candidatesFor(
             0,
             Math.floor(
               (Date.parse(`${slot.date}T00:00:00Z`) -
-                Date.parse(`${p.since}T00:00:00Z`)) /
+                Date.parse(
+                  `${p.importSource === "institution" && eligibleRequests.length ? eligibleRequests.map((r) => r.submittedAt).sort()[0] : p.since}T00:00:00Z`,
+                )) /
                 86400000,
             ),
           ),
@@ -337,6 +375,9 @@ export function candidatesFor(
         b.waiting - a.waiting ||
         (a.recent === "없음" ? "" : a.recent).localeCompare(
           b.recent === "없음" ? "" : b.recent,
+        ) ||
+        participantLabel(a.participant).localeCompare(
+          participantLabel(b.participant),
         ) ||
         a.participant.id.localeCompare(b.participant.id),
     );

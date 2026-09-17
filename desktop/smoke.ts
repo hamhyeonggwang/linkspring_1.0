@@ -1,6 +1,7 @@
 import type { BrowserWindow } from "electron";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { runInstitutionSmoke } from "./institution-smoke";
 export async function runSmoke(window: BrowserWindow, output: string) {
   // Test hook runs only from an unpackaged development build in an isolated profile.
   const result = await window.webContents.executeJavaScript(`(async () => {
@@ -28,7 +29,22 @@ export async function runSmoke(window: BrowserWindow, output: string) {
     if (!rejected) throw new Error('IPC allowlist failed');
     return { isolation:true, demo:true, confirmation:true, notice:true, workspaceIsolation:true, offlineAnalysis:true, ipcAllowlist:true, text:document.body.innerText.slice(0,2000) };
   })()`);
-  writeFileSync(join(output, "smoke-result.json"), JSON.stringify(result, null, 2));
-  writeFileSync(join(output, "screen.png"), (await window.webContents.capturePage()).toPNG());
+  try {
+    result.institutionUI = await runInstitutionSmoke(window);
+  } catch (error) {
+    writeFileSync(join(output, "failure.png"), (await window.webContents.capturePage()).toPNG());
+    writeFileSync(join(output, "failure.txt"), await window.webContents.executeJavaScript("document.body.innerText"));
+    throw error;
+  }
+  writeFileSync(
+    join(output, "smoke-result.json"),
+    JSON.stringify(result, null, 2),
+  );
+  // Let Chromium paint the committed React frame before capturing it.
+  await new Promise(resolve => setTimeout(resolve, 300));
+  writeFileSync(
+    join(output, "screen.png"),
+    (await window.webContents.capturePage()).toPNG(),
+  );
   console.log("DESKTOP_SMOKE_OK", JSON.stringify(result));
 }

@@ -15,7 +15,7 @@ import {
   type ScheduleEntry,
 } from "./domain";
 
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string, allowEmptyHeaders = false): string[][] {
   const rows: string[][] = [];
   let row: string[] = [],
     cell = "",
@@ -43,7 +43,10 @@ export function parseCsv(text: string): string[][] {
   if (row.some(Boolean)) rows.push(row);
   if (rows.length < 2) throw new Error("CSV에 데이터 행이 없습니다.");
   rows[0][0] = rows[0][0].replace(/^\uFEFF/, "");
-  if (new Set(rows[0]).size !== rows[0].length)
+  const namedHeaders = allowEmptyHeaders
+    ? rows[0].filter((h) => h && !/^Unnamed(?::\s*\d+)?$/i.test(h))
+    : rows[0];
+  if (new Set(namedHeaders).size !== namedHeaders.length)
     throw new Error("같은 이름의 열이 중복되어 있습니다.");
   if (rows.slice(1).some((r) => r.length !== rows[0].length))
     throw new Error("모든 행의 열 수가 같아야 합니다.");

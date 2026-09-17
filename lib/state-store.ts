@@ -6,6 +6,7 @@ import type {
   ParticipantRequest,
   ScheduleEntry,
   Audit,
+  ScheduleStaff,
 } from "./domain";
 
 export async function readState(db: DatabasePort): Promise<State> {
@@ -20,10 +21,10 @@ export async function readState(db: DatabasePort): Promise<State> {
       "SELECT id,date,substr(time,1,5) AS startTime,substr(time,7,5) AS endTime,therapy_type AS type,therapist,status,assigned_participant AS assignedParticipant,notice_status AS noticeStatus,notice_text AS noticeText,assigned_at AS assignedAt,notice_completed_at AS noticeCompletedAt,revision FROM slots ORDER BY date,time,id",
     ),
     db.prepare(
-      "SELECT id,therapy_type AS type,availability,waiting_since AS since,recent_connection AS recent,active FROM participants ORDER BY id",
+      "SELECT id,therapy_type AS type,availability,waiting_since AS since,recent_connection AS recent,active,external_code AS externalCode,import_source AS importSource FROM participants ORDER BY id",
     ),
     db.prepare(
-      "SELECT id,participant_id AS participantId,submitted_at AS submittedAt,desired_date AS desiredDate,therapy_types AS therapyTypes,morning_times AS morningTimes,afternoon_times AS afternoonTimes,status,note FROM participant_requests",
+      "SELECT id,participant_id AS participantId,submitted_at AS submittedAt,desired_date AS desiredDate,therapy_types AS therapyTypes,morning_times AS morningTimes,afternoon_times AS afternoonTimes,status,note,submitted_time AS submittedTime FROM participant_requests",
     ),
     db.prepare(
       "SELECT id,date,weekday,department,therapist_id AS therapistId,therapist_name AS therapistName,start_time AS startTime,end_time AS endTime,treatment_code AS treatmentCode,import_batch AS importBatch FROM schedule_entries",
@@ -32,6 +33,9 @@ export async function readState(db: DatabasePort): Promise<State> {
       "SELECT id,slot_id AS slotId,action,actor,detail,created_at AS createdAt FROM audit_logs ORDER BY id DESC LIMIT 100",
     ),
     db.prepare("SELECT key,value FROM system_settings"),
+    db.prepare(
+      "SELECT id,external_code AS externalCode,display_name AS displayName,department,position FROM schedule_staff ORDER BY position,id",
+    ),
   ]);
   return {
     slots: results[0].results as unknown as Slot[],
@@ -42,6 +46,7 @@ export async function readState(db: DatabasePort): Promise<State> {
     participantRequests: results[2].results as unknown as ParticipantRequest[],
     scheduleEntries: results[3].results as unknown as ScheduleEntry[],
     audit: results[4].results as unknown as Audit[],
+    staff: results[6].results as unknown as ScheduleStaff[],
     settings: Object.fromEntries(
       (results[5].results as { key: string; value: string }[]).map((r) => [
         r.key,
