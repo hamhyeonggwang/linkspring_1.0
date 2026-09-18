@@ -73,7 +73,7 @@
 
 | **구분** | **링크 또는 안내** | **상태** |
 | --- | --- | --- |
-| 솔루션 실행 링크 | [GitHub 배포 페이지](https://github.com/hamhyeonggwang/linkspring_1.0/releases) · 파일명 `LinkSpring-Setup-1.2.0-x64.exe` | 1.2.0 설치파일은 제출 묶음에 포함. 온라인 자산 게시 여부는 배포 페이지에서 확인 |
+| 솔루션 실행 링크 | [LinkSpring 1.2.0 Windows 설치파일 다운로드](https://github.com/hamhyeonggwang/linkspring_1.0/releases/download/v1.2.0/LinkSpring-Setup-1.2.0-x64.exe) | 공개 GitHub Release 게시 완료 |
 | 소스코드 또는 결과물 원본 | [GitHub 저장소](https://github.com/hamhyeonggwang/linkspring_1.0) | 소스코드 ZIP은 설치파일이 아님 |
 | 데모 영상(선택) | 별도 영상 없음. 0번의 실제 실행 화면과 가상 데이터 체험 제공 | 선택 항목 |
 | 테스트 계정(선택) | 필요 없음. 웹 계정이 없는 Windows 로컬 설치형이며 첫 실행의 `예시로 체험`에서 가상 데이터로 확인할 수 있습니다. | 준비됨 |
@@ -263,7 +263,7 @@ AI 역할이 결석 입력에만 머물러 업무 기여가 잘 드러나지 않
 ### 4.3 체크리스트
 
 - [X] 솔루션의 핵심 기능이 실제로 작동합니다. *(가상 데이터 자동 테스트와 Electron UI 흐름 기준)*
-- [ ] 솔루션 실행 링크와 데모 영상(선택)을 확인했습니다. *(GitHub Release 링크 게시 후 최종 확인 필요)*
+- [X] 솔루션 실행 링크와 데모 화면을 확인했습니다. *(GitHub Release 1.2.0 설치파일과 실제 프로그램 화면 9장)*
 - [X] 이용자용 활용 가이드를 작성했습니다.
 - [X] 관리자용 설치·운영 가이드를 작성했습니다.
 - [X] 처음 보는 사람도 이해할 수 있도록 작성했습니다.
