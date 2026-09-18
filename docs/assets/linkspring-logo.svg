@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="112" viewBox="0 0 420 112" role="img" aria-labelledby="title desc">
+  <title id="title">이어:봄 LinkSpring</title><desc id="desc">기다리던 기회를 잇는 AI 업무 도우미</desc>
+  <rect width="420" height="112" rx="20" fill="#eef4fb"/>
+  <rect x="20" y="23" width="66" height="66" rx="19" fill="#fff"/>
+  <g transform="translate(33 36) scale(1.67)" fill="none" stroke="#245ec7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2m6 0h2a5 5 0 0 1 0 10h-2M8 12h8"/></g>
+  <text x="106" y="53" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#17233d">이어:봄 <tspan font-size="18" fill="#526c91">LinkSpring</tspan></text>
+  <text x="107" y="80" font-family="Arial, sans-serif" font-size="14" fill="#526c91">기다리던 기회를 잇는 AI 업무 도우미</text>
+</svg>

@@ -61,6 +61,7 @@ import { decodeCsv } from "@/lib/csv";
 import { CsvImportDialog, type CsvFile } from "@/components/csv-import-dialog";
 import { TreatmentBoard } from "@/components/treatment-board";
 import { participantLabel, staffLabel } from "@/lib/domain";
+import { AIAssistPanel } from "@/components/ai-assist-panel";
 
 const nav = [
   { id: "queue", label: "처리 대기", icon: ListTodo },
@@ -231,8 +232,8 @@ export default function Home({
         );
       setParsedSlot(data.fields);
       setSource(
-        data.source === "claude"
-          ? "Claude 분석 · 담당자 확인 필요"
+        data.source === "claude" || data.source === "ai"
+          ? "AI 분석 · 담당자 확인 필요"
           : `규칙 분석 · ${data.reason} · 누락 항목 직접 입력 필요`,
       );
       toast("결과를 시간표와 비교하고 수정한 뒤 등록해 주세요.");
@@ -272,7 +273,7 @@ export default function Home({
           </div>
         </div>
         <div className="global-context">
-          <strong>기다리던 기회를 잇는 일정 관리</strong>
+          <strong>기다리던 기회를 잇는 AI 업무 도우미</strong>
           <span>{today()}</span>
         </div>
         <div className="top-actions">
@@ -340,6 +341,7 @@ export default function Home({
             <h1>{nav.find((n) => n.id === view)?.label}</h1>
             <span>{busy ? "저장 중…" : "코디네이터 업무"}</span>
           </header>
+          {desktopControls && view === "queue" && <div className="ai-workflow"><strong>AI와 함께 기회를 연결하세요</strong><span>① 결석 내용 분석 → ② 후보 비교·근거 확인 → ③ 담당자 연결 확정 → ④ AI 안내문 검토</span><small>AI 연결 설정 후 버튼을 눌러 사용합니다. 미설정 시 기본 분석과 일정 대조로 계속할 수 있습니다.</small></div>}
           {loading && <p role="status">일정을 불러오는 중입니다…</p>}
           {error && (
             <div role="alert" className="import-warnings">
@@ -681,6 +683,7 @@ export default function Home({
               {active?.type} · {active && staffLabel(state, active.therapist)}
             </DialogDescription>
           </DialogHeader>
+          {active && desktopControls && <AIAssistPanel key={`${active.id}-${state.settings.state_revision}`} slot={active} state={state} disabled={busy || !!error} onSave={mutate} />}
           {active &&
             (active.status === "연결 완료" ? (
               <>
@@ -822,7 +825,7 @@ export default function Home({
           <DialogHeader>
             <DialogTitle>결석·빈 회기 등록</DialogTitle>
             <DialogDescription>
-              원문은 이 브라우저에서만 처리합니다. Claude에는 아래 확인한 일정
+              원문은 이 기기에서만 처리합니다. AI에는 아래 확인한 일정
               정보만 전송합니다.
             </DialogDescription>
           </DialogHeader>
@@ -848,14 +851,14 @@ export default function Home({
                 일정 정보만 추출
               </Button>
               <label>
-                Claude로 전송할 일정 정보
+                AI로 전송할 일정 정보
                 <Textarea readOnly value={safeText} />
               </label>
               <Button
                 disabled={!safeText || parsing || busy}
                 onClick={() => void parse()}
               >
-                {parsing ? "분석 중…" : "내용 확인 후 Claude로 분석"}
+                {parsing ? "분석 중…" : "내용 확인 후 AI로 분석"}
               </Button>
               <p>
                 전송할 항목에 개인을 식별하는 정보가 없는지 확인하세요.

@@ -2,7 +2,8 @@ import type { BrowserWindow } from "electron";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runInstitutionSmoke } from "./institution-smoke";
-export async function runSmoke(window: BrowserWindow, output: string) {
+import { captureSubmission } from "./submission-screens";
+export async function runSmoke(window: BrowserWindow, output: string, prepareAI?: () => void) {
   // Test hook runs only from an unpackaged development build in an isolated profile.
   const result = await window.webContents.executeJavaScript(`(async () => {
     if (!window.linkspring || typeof require !== 'undefined') throw new Error('Renderer isolation failed');
@@ -42,9 +43,30 @@ export async function runSmoke(window: BrowserWindow, output: string) {
   );
   // Let Chromium paint the committed React frame before capturing it.
   await new Promise(resolve => setTimeout(resolve, 300));
+  const pages = [
+    ["queue", "처리 대기"],
+    ["children", "대기자 관리"],
+    ["schedule", "치료 일정"],
+    ["review", "추가 확인 필요"],
+    ["history", "연결·안내 내역"],
+  ] as const;
+  for (const [name, label] of pages) {
+    await window.webContents.executeJavaScript(`(async () => {
+      const button = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === ${JSON.stringify(label)});
+      if (!button) throw new Error('Screenshot navigation failed: ' + ${JSON.stringify(label)});
+      button.click();
+      await new Promise(resolve => setTimeout(resolve, 350));
+    })()`);
+    writeFileSync(join(output, `page-${name}.png`), (await window.webContents.capturePage()).toPNG());
+  }
   writeFileSync(
     join(output, "screen.png"),
     (await window.webContents.capturePage()).toPNG(),
   );
   console.log("DESKTOP_SMOKE_OK", JSON.stringify(result));
+  if (process.env.LINKSPRING_SUBMISSION_SCREENSHOTS === "1") {
+    prepareAI?.();
+    try { await captureSubmission(window, output, !!prepareAI); }
+    catch (e) { writeFileSync(join(output, "ai-failure.png"), (await window.webContents.capturePage()).toPNG()); throw e; }
+  }
 }

@@ -8,7 +8,8 @@ import { seedDemo } from "./demo";
 import { AISettingsStore } from "./ai-settings";
 import { readState } from "../lib/state-store";
 import { executeAction } from "../lib/state-actions";
-import { analyzeAbsence } from "../lib/absence";
+import { analyzeSchedule, assistCandidates, assistNotice, testAIConnection } from "../lib/ai-assistant";
+import { AIError } from "../lib/ai-provider";
 import { scheduleTokens, today } from "../lib/domain";
 import { AppError } from "../lib/errors";
 import { operations, type Operation } from "../shared/desktop";
@@ -63,7 +64,7 @@ async function run() {
         return { ok: true, data: await dispatch(operation, payload) };
       } catch (error) {
         // Never return raw SQLite errors, SQL, file content, or credentials.
-        return { ok: false, error: error instanceof AppError ? error.message : "처리하지 못했습니다. 입력과 백업 파일을 확인해 주세요. 현재 데이터는 자동으로 삭제되지 않습니다." };
+        return { ok: false, error: error instanceof AppError || error instanceof AIError ? error.message : "처리하지 못했습니다. 입력과 백업 파일을 확인해 주세요. 현재 데이터는 자동으로 삭제되지 않습니다." };
       }
     });
     chain = task.catch(() => undefined);
@@ -80,7 +81,15 @@ async function run() {
       case "analyze": {
         const parsed = z.object({ text: z.string().max(4000) }).safeParse(payload);
         if (!parsed.success) throw new AppError(400, "일정 정보를 확인하세요.");
-        return analyzeAbsence(scheduleTokens(parsed.data.text), today(), workspace === "work" ? settings.config() : {});
+        return analyzeSchedule(scheduleTokens(parsed.data.text), today(), settings.config());
+      }
+      case "testAI": return testAIConnection(settings.config());
+      case "aiAssist": {
+        const parsed = z.object({ kind: z.enum(["candidates", "notice"]), slotId: z.string().max(100), version: z.string().uuid() }).safeParse(payload);
+        if (!parsed.success) throw new AppError(400, "AI 요청을 확인하세요.");
+        const state = await readState(db);
+        if (state.settings.state_revision !== parsed.data.version) throw new AppError(409, "데이터가 변경되었습니다. 새로고침 후 다시 분석하세요.");
+        return parsed.data.kind === "candidates" ? assistCandidates(state, parsed.data.slotId, settings.config()) : assistNotice(state, parsed.data.slotId, settings.config());
       }
       case "workspace": {
         const mode = z.enum(["work", "demo"]).parse(payload);
@@ -114,7 +123,9 @@ async function run() {
   await window.loadURL("app://linkspring/");
   if (smokeDir) {
     const { runSmoke } = await import("./smoke");
-    await runSmoke(window, smokeDir);
+    await runSmoke(window, smokeDir, process.env.LINKSPRING_LIVE_AI === "1" && process.env.ANTHROPIC_API_KEY ? () => {
+      settings.save({ provider: "anthropic", endpoint: "", model: process.env.LINKSPRING_TEST_MODEL, enabled: true, apiKey: process.env.ANTHROPIC_API_KEY });
+    } : undefined);
     app.quit();
   }
 }

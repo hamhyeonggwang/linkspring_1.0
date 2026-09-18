@@ -27,7 +27,14 @@ test("local workflow persists across restart and rejects stale confirmation atom
     await executeAction(body, db, "test");
     await assert.rejects(executeAction(body, db, "test"));
     const confirmed = await readState(db);
-    await executeAction({ kind: "notice", version: confirmed.settings.state_revision, slotId: slot.id }, db, "test");
+    const draft = `안녕하세요. ${slot.date} ${slot.startTime}–${slot.endTime} ${slot.type} 일정 안내입니다.`;
+    await assert.rejects(executeAction({ kind: "notice_draft", version: confirmed.settings.state_revision, slotId: slot.id, text: "일정 없는 잘못된 안내", source: "ai" }, db, "test"));
+    await executeAction({ kind: "notice_draft", version: confirmed.settings.state_revision, slotId: slot.id, text: draft, source: "ai" }, db, "test");
+    const reviewed = await readState(db);
+    assert.equal(reviewed.slots.find(s => s.id === slot.id)?.noticeText, draft);
+    assert(reviewed.audit.some(a => a.action === "notice_draft" && a.detail.includes("AI 초안")));
+    await executeAction({ kind: "notice", version: reviewed.settings.state_revision, slotId: slot.id }, db, "test");
+    await assert.rejects(executeAction({ kind: "notice_draft", version: (await readState(db)).settings.state_revision, slotId: slot.id, text: draft, source: "ai" }, db, "test"));
     const saved = await readState(db);
     db.close(); db = new LocalDatabase(db.path, migrations);
     const reloaded = await readState(db);

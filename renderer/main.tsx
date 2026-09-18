@@ -10,8 +10,10 @@ import {
   type ScheduleEntry,
 } from "../lib/domain";
 import type { AISettings, DesktopInfo, Operation } from "../shared/desktop";
+import { providers, providerNames, endpoints, type AIProvider } from "../lib/ai-provider";
 import "../app/globals.css";
 import "./desktop.css";
+import "./ai.css";
 
 async function call<T>(op: Operation, data?: unknown): Promise<T> {
   if (!window.linkspring)
@@ -29,6 +31,7 @@ function DesktopApp() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [settings, setSettings] = useState<AISettings>({
+    provider: "anthropic", endpoint: "",
     model: "",
     enabled: false,
     hasKey: false,
@@ -164,7 +167,7 @@ function DesktopApp() {
             })
           }
         >
-          Claude 설정
+          AI 연결 설정
         </button>
         <button disabled={busy} onClick={() => setPanel("help")}>
           사용 안내
@@ -357,17 +360,19 @@ function DesktopApp() {
                     setKey("");
                     setClearKey(false);
                     setPanel(null);
-                    setMessage("Claude 설정을 저장했습니다.");
+                    setMessage("AI 설정을 저장했습니다. AI 버튼을 눌러 분석·비교·안내문 작성을 사용할 수 있습니다.");
                   });
                 }}
               >
-                <h1 id="desktop-title">Claude 선택 기능</h1>
+                <h1 id="desktop-title">AI 연결 설정</h1>
                 <p>
-                  기본 업무는 설정 없이 이용할 수 있습니다. 활성화하면 분석
-                  버튼을 눌렀을 때 추출한 일정 토큰과 기준일을 Anthropic으로
-                  전송합니다. 본인 API 계정에 이용 요금이 발생할 수 있습니다.
-                  체험 모드에서는 항상 규칙 분석을 사용합니다.
+                  사용할 제공사와 모델을 직접 선택하세요. AI 분석·후보 비교·안내문
+                  버튼을 눌렀을 때 필요한 최소 정보만 선택한 제공사로 전송합니다.
+                  본인 API 계정에 요금이 발생할 수 있습니다. 체험 모드에서도
+                  설정하면 실제 AI를 가상 데이터로 시험할 수 있습니다.
                 </p>
+                <label>AI 제공사<select value={settings.provider} onChange={e => { setSettings({ ...settings, provider: e.target.value as AIProvider, endpoint: "", model: "", hasKey: false }); setKey(""); setClearKey(true); }}>{providers.map(p => <option value={p} key={p}>{providerNames[p]}</option>)}</select></label>
+                {settings.provider === "compatible" ? <label>HTTPS 전체 API 주소<input value={settings.endpoint} placeholder="https://기관에서-승인한-서버/v1/chat/completions" onChange={e => { setSettings({ ...settings, endpoint: e.target.value, hasKey: false }); setClearKey(true); }} /></label> : <p className="desktop-path">전송 주소: {endpoints[settings.provider]}</p>}
                 <label className="desktop-checkbox">
                   <input
                     type="checkbox"
@@ -376,7 +381,7 @@ function DesktopApp() {
                       setSettings({ ...settings, enabled: e.target.checked })
                     }
                   />
-                  외부 전송을 이해하고 실제 업무에서 Claude 사용
+                  외부 전송·이용 요금을 이해하고 AI 사용
                 </label>
                 <label>
                   API 키{" "}
@@ -390,11 +395,11 @@ function DesktopApp() {
                   />
                 </label>
                 <label>
-                  모델 ID (본인 Anthropic 계정에서 이용 가능한 값)
+                  모델 ID (선택한 제공사 계정에서 이용 가능한 값)
                   <input
                     maxLength={120}
                     value={settings.model}
-                    placeholder="사용할 Claude 모델 ID"
+                    placeholder="함수 호출을 지원하는 모델 ID"
                     onChange={(e) =>
                       setSettings({ ...settings, model: e.target.value })
                     }
@@ -411,11 +416,17 @@ function DesktopApp() {
                 <p className="desktop-note">
                   키는 Windows 사용자 계정에 연결된 암호화 저장소를 사용하며,
                   데이터 백업이나 설치파일에 포함되지 않습니다. 연결 실패 시
-                  규칙 분석으로 전환됩니다.
+                  기본 분석으로 전환됩니다. 제공사나 전송 주소를 변경하면 키를 다시 입력해야 합니다.
                 </p>
                 <button disabled={busy} type="submit">
                   설정 저장
                 </button>
+                <button disabled={busy} type="button" onClick={() => void perform(async () => {
+                  setSettings(await call<AISettings>("saveSettings", { ...settings, apiKey: key || undefined, clearKey }));
+                  setKey(""); setClearKey(false);
+                  const r = await call<{ model: string; usage: { inputTokens: number; outputTokens: number } }>("testAI");
+                  setMessage(`AI 연결 성공 · ${r.model} · 입력 ${r.usage.inputTokens} / 출력 ${r.usage.outputTokens} 토큰. 업무 데이터는 전송하지 않았습니다.`);
+                })}>저장 후 연결 시험 (소량 과금)</button>
               </form>
             )}
             {message && (

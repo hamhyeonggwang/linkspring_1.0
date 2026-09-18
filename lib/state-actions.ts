@@ -20,6 +20,7 @@ import {
 
 const versionSchema = z.string().uuid();
 const actionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("notice_draft"), version: versionSchema, slotId: z.string().max(100), text: z.string().trim().min(1).max(1600), source: z.enum(["ai", "rules", "manual"]) }),
   z.object({
     kind: z.literal("create"),
     version: versionSchema,
@@ -149,7 +150,7 @@ export async function executeAction(
   } else if (
     input.kind === "confirm" ||
     input.kind === "hold" ||
-    input.kind === "notice"
+    input.kind === "notice" || input.kind === "notice_draft"
   ) {
     target = input.slotId;
     const s = state.slots.find((s) => s.id === target);
@@ -206,6 +207,11 @@ export async function executeAction(
           .bind(s.date, input.participantId),
       );
       detail = `${input.participantId} · 일치 조건 검증 후 담당자 확정`;
+    } else if (input.kind === "notice_draft") {
+      if (s.status !== "연결 완료" || s.noticeStatus === "안내 완료") throw new AppError(409, "안내 완료 전의 연결된 회기만 수정할 수 있습니다.");
+      if (![s.date, s.startTime, s.endTime, s.type].every(v => input.text.includes(v))) throw new AppError(400, "안내문에 확정된 날짜·시작·종료 시각·서비스를 모두 포함해 주세요.");
+      operations.push(db.prepare("UPDATE slots SET notice_text=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(input.text, target));
+      detail = `${input.source === "ai" ? "AI 초안" : input.source === "rules" ? "기본 문구" : "직접 작성"} · 담당자 검토 후 안내문 저장`;
     } else if (input.kind === "hold") {
       if (s.status === "연결 완료")
         throw new AppError(409, "완료된 회기는 보류할 수 없습니다.");
